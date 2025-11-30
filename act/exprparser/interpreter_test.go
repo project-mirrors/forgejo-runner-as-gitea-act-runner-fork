@@ -640,7 +640,7 @@ func TestErrorModes(t *testing.T) {
 		expected    any
 		name        string
 		errorMode   ErrorMode
-		expectedErr *InvalidJobOutputReferencedError
+		expectedErr error
 	}{
 		{
 			name:     "needs-output-defaulterrmode",
@@ -683,6 +683,33 @@ func TestErrorModes(t *testing.T) {
 				String: "job \"non-existent-job\" is not available",
 			},
 		},
+
+		{
+			name:     "matrix-defaulterrmode-present",
+			input:    "matrix.os",
+			expected: "nixos",
+		},
+		{
+			name:     "matrix-defaulterrmode-absent",
+			input:    "matrix.platform",
+			expected: nil,
+		},
+
+		{
+			name:      "matrix-defaulterrmode-present",
+			input:     "matrix.os",
+			expected:  "nixos",
+			errorMode: InvalidMatrixDimension,
+		},
+		{
+			name:      "matrix-defaulterrmode-absent",
+			input:     "matrix.platform",
+			errorMode: InvalidMatrixDimension,
+			expectedErr: &InvalidMatrixDimensionReferencedError{
+				Dimension: "platform",
+				String:    "matrix dimension \"platform\" is not defined",
+			},
+		},
 	}
 
 	env := &EvaluationEnvironment{
@@ -703,6 +730,9 @@ func TestErrorModes(t *testing.T) {
 		Inputs: map[string]any{
 			"name": "value",
 		},
+		Matrix: map[string]any{
+			"os": "nixos",
+		},
 	}
 
 	for _, tt := range table {
@@ -711,9 +741,7 @@ func TestErrorModes(t *testing.T) {
 
 			output, err := NewInterpreter(env, Config{}).Evaluate(tt.input, DefaultStatusCheckNone)
 			if tt.expectedErr != nil {
-				var perr *InvalidJobOutputReferencedError
-				assert.ErrorAs(t, err, &perr)
-				assert.Equal(t, *tt.expectedErr, *perr)
+				assert.Equal(t, tt.expectedErr, err)
 			} else {
 				assert.Nil(t, err)
 				assert.Equal(t, tt.expected, output)

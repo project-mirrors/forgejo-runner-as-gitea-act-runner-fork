@@ -53,6 +53,7 @@ type ErrorMode int
 
 const (
 	InvalidJobOutput ErrorMode = 1 << iota
+	InvalidMatrixDimension
 	// Future: add flags enums for other error modes
 )
 
@@ -188,7 +189,7 @@ func (impl *interperterImpl) evaluateVariable(variableNode *actionlint.VariableN
 	case "strategy":
 		return impl.env.Strategy, nil
 	case "matrix":
-		return impl.env.Matrix, nil
+		return &MatrixWrapper{Matrix: impl.env.Matrix}, nil
 	case "needs":
 		return impl.env.Needs, nil
 	case "inputs":
@@ -257,6 +258,19 @@ func (e *InvalidJobOutputReferencedError) Error() string {
 	return e.String
 }
 
+type MatrixWrapper struct {
+	Matrix map[string]any
+}
+
+type InvalidMatrixDimensionReferencedError struct {
+	Dimension string
+	String    string
+}
+
+func (e *InvalidMatrixDimensionReferencedError) Error() string {
+	return e.String
+}
+
 func (impl *interperterImpl) evaluateObjectDeref(objectDerefNode *actionlint.ObjectDerefNode) (any, error) {
 	left, err := impl.evaluateNode(objectDerefNode.Receiver)
 	if err != nil {
@@ -307,6 +321,19 @@ func (impl *interperterImpl) evaluateObjectDeref(objectDerefNode *actionlint.Obj
 			}
 			return output, nil
 		}
+	}
+
+	if matrixWrapper, ok := left.(*MatrixWrapper); ok {
+		if impl.env.ErrorMode&InvalidMatrixDimension == InvalidMatrixDimension {
+			if _, ok := matrixWrapper.Matrix[objectDerefNode.Property]; !ok {
+				return nil, &InvalidMatrixDimensionReferencedError{
+					Dimension: objectDerefNode.Property,
+					String:    fmt.Sprintf("matrix dimension %q is not defined", objectDerefNode.Property),
+				}
+			}
+		}
+
+		left = matrixWrapper.Matrix
 	}
 
 	return impl.getPropertyValue(reflect.ValueOf(left), objectDerefNode.Property)
